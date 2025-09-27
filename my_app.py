@@ -117,7 +117,7 @@ smiles = st.text_input("Enter the SMILES representation of the molecule:", place
 submit_button = st.button("Submit and Predict", key="predict_button")
 
 # 指定的描述符列表 - 已更新为所需的特征
-required_descriptors = ["nBondsD", "SdssC", "PEOE_VSA8", "SMR_VSA3", "n6HRing", "SMR_VSA10"]
+required_descriptors = ["ATS0se", "EState_VSA5", "ATSC0dv"]
 
 # 缓存模型加载器以避免重复加载
 @st.cache_resource(show_spinner=False, max_entries=1)  # 限制只缓存一个实例
@@ -305,11 +305,7 @@ if submit_button:
                 st.markdown(f'<div class="molecular-weight">Molecular Weight: {mol_weight:.2f} g/mol</div>',
                             unsafe_allow_html=True)
 
-                # 获取溶剂参数
-                solvent_params = solvent_data[solvent]
-
-                # 获取溶剂参数
-                solvent_params = solvent_data[solvent]
+               
                 
                 # 计算指定描述符 - 现在传递SMILES字符串
                 smiles_list = [smiles]  # 将单个 SMILES 转换为列表
@@ -318,22 +314,14 @@ if submit_button:
                 
                 # 合并特征并去除重复列
                 merged_features = merge_features_without_duplicates(rdkit_features, mordred_features)
-                data=merged_features.loc[:, ['nBondsD', 'SdssC', 'PEOE_VSA8', 'SMR_VSA3', 'n6HRing', 'SMR_VSA10']]
+                data=merged_features.loc[:, ['ATS0se', 'EState_VSA5', 'ATSC0dv']]
 
                 # 创建输入数据表 - 使用新的特征
                 input_data = {
                     "SMILES": [smiles],
-                    "Et30": [solvent_params["Et30"]],
-                    "SP": [solvent_params["SP"]],
-                    "SdP": [solvent_params["SdP"]],
-                    "SA": [solvent_params["SA"]],
-                    "SB": [solvent_params["SB"]],
-                    'nBondsD': [data.iloc[0]['nBondsD']], 
-                    'SdssC': [data.iloc[0]['SdssC']], 
-                    'PEOE_VSA8': [data.iloc[0]['PEOE_VSA8']], 
-                    'SMR_VSA3': [data.iloc[0]['SMR_VSA3']], 
-                    'n6HRing': [data.iloc[0]['n6HRing']], 
-                    'SMR_VSA10': [data.iloc[0]['SMR_VSA10']]
+                    'ATS0se': [data.iloc[0]['ATS0se']], 
+                    'EState_VSA5': [data.iloc[0]['EState_VSA5']], 
+                    'ATSC0dv': [data.iloc[0]['ATSC0dv']]
                 }
             
                 input_df = pd.DataFrame(input_data)
@@ -344,17 +332,9 @@ if submit_button:
 
                 # 创建预测用数据框 - 使用新的特征
                 predict_df = pd.DataFrame({
-                    "Et30": [solvent_params["Et30"]],
-                    "SP": [solvent_params["SP"]],
-                    "SdP": [solvent_params["SdP"]],
-                    "SA": [solvent_params["SA"]],
-                    "SB": [solvent_params["SB"]],
-                    'nBondsD': [data.iloc[0]['nBondsD']], 
-                    'SdssC': [data.iloc[0]['SdssC']], 
-                    'PEOE_VSA8': [data.iloc[0]['PEOE_VSA8']], 
-                    'SMR_VSA3': [data.iloc[0]['SMR_VSA3']], 
-                    'n6HRing': [data.iloc[0]['n6HRing']], 
-                    'SMR_VSA10': [data.iloc[0]['SMR_VSA10']]
+                    'ATS0se': [data.iloc[0]['ATS0se']], 
+                    'EState_VSA5': [data.iloc[0]['EState_VSA5']], 
+                    'ATSC0dv': [data.iloc[0]['ATSC0dv']]
                 })
                 
                 # 加载模型并预测
