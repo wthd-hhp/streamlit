@@ -73,7 +73,7 @@ required_descriptors = ["ATS0se", "EState_VSA5", "ATSC0dv"]
 @st.cache_resource(show_spinner=False, max_entries=1)
 def load_predictor():
     """加载训练好的热容预测模型"""
-    return TabularPredictor.load("./ag-heatcapacity-model")  # ← 改成你的模型文件夹
+    return TabularPredictor.load("./autogluon")  # ← 改成你的模型文件夹
 
 # ---------------- 分子绘图函数 ----------------
 def mol_to_image(mol, size=(300, 300)):
