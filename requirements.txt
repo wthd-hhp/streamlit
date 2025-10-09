@@ -4,6 +4,7 @@ numpy==1.26.4
 pandas==2.3.3
 setuptools
 autogluon[all]==1.1.1
+autogluon.tabular==1.1.1
 pillow==10.4.0  # 显式指定兼容版本
 mordred
 #git+https://github.com/mordred-descriptor/mordred.git
