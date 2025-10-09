@@ -3,7 +3,7 @@ rdkit==2024.9.6
 numpy==1.26.4
 pandas==2.2.0
 setuptools
-autogluon[all]==1.1.1
+autogluon==1.2.0
 autogluon.tabular==1.1.1
 pillow==10.4.0  # 显式指定兼容版本
 mordred
