@@ -1,17 +1,14 @@
 import streamlit as st
 from rdkit import Chem
-from rdkit.Chem import Descriptors, Draw, AllChem
+from rdkit.Chem import Descriptors, AllChem
 from rdkit.Chem.Draw import MolDraw2DSVG
 from rdkit.ML.Descriptors import MoleculeDescriptors
 from mordred import Calculator, descriptors
 import pandas as pd
 from autogluon.tabular import TabularPredictor
-import tempfile
-import base64
-import re
-import gc
-from tqdm import tqdm
 import numpy as np
+import gc
+import re
 
 # ---------------- 页面样式 ----------------
 st.markdown(
@@ -27,7 +24,6 @@ st.markdown(
         box-sizing: border-box;
     }
     .rounded-container h2 {
-        margin-top: -80px;
         text-align: center;
         background-color: #e0e0e0e0;
         padding: 10px;
@@ -50,10 +46,10 @@ st.markdown(
 st.markdown(
     """
     <div class='rounded-container'>
-        <h2>Predict Heat Capacity of Organic Molecules</h2>
+        <h2>Predict Heat Capacity (Cp) of Organic Molecules</h2>
         <blockquote>
-            1. This web app predicts the heat capacity (Cp) of organic molecules based on their SMILES structure using a trained machine learning model.<br>
-            2. Please enter a valid SMILES string below to get the predicted result.
+            1. 本网页工具基于机器学习模型，可根据分子结构（SMILES）预测有机物的热容（Cp）。<br>
+            2. 请输入正确的 SMILES 字符串，系统将自动计算分子描述符并进行预测。
         </blockquote>
     </div>
     """,
@@ -61,19 +57,20 @@ st.markdown(
 )
 
 # ---------------- 用户输入 ----------------
-smiles = st.text_input("Enter the SMILES representation of the molecule:", 
-                       placeholder="e.g., C1=CC=CC=C1O")
+smiles = st.text_input(
+    "输入分子的 SMILES 表示式：", 
+    placeholder="例如：C1=CC=CC=C1O"
+)
+submit_button = st.button("提交并预测")
 
-submit_button = st.button("Submit and Predict")
-
-# 选择所需描述符（与你模型的特征一致）
+# ---------------- 需要的描述符（与你模型一致） ----------------
 required_descriptors = ["ATS0se", "EState_VSA5", "ATSC0dv"]
 
 # ---------------- 模型加载 ----------------
 @st.cache_resource(show_spinner=False, max_entries=1)
 def load_predictor():
-    """加载训练好的热容预测模型"""
-    return TabularPredictor.load("./autogluon")  # ← 改成你的模型文件夹
+    """加载训练好的 AutoGluon 热容预测模型"""
+    return TabularPredictor.load("./autogluon")  # ← 修改为你模型文件夹路径
 
 # ---------------- 分子绘图函数 ----------------
 def mol_to_image(mol, size=(300, 300)):
@@ -107,7 +104,17 @@ def calc_mordred_descriptors(smiles_list):
         results.append(res.asdict())
     return pd.DataFrame(results)
 
-# ---------------- 特征合并 ----------------
+# ---------------- 清洗描述符函数（关键修复） ----------------
+def clean_descriptor_dataframe(df):
+    """确保所有描述符都是单值数值（非列表或对象），防止 numpy 报错"""
+    for col in df.columns:
+        df[col] = df[col].apply(
+            lambda x: x[0] if isinstance(x, (list, tuple, np.ndarray)) else x
+        )
+    df = df.apply(pd.to_numeric, errors='coerce')
+    return df
+
+# ---------------- 合并特征 ----------------
 def merge_features_without_duplicates(original_df, *feature_dfs):
     merged = pd.concat([original_df] + list(feature_dfs), axis=1)
     merged = merged.loc[:, ~merged.columns.duplicated()]
@@ -116,16 +123,16 @@ def merge_features_without_duplicates(original_df, *feature_dfs):
 # ---------------- 主预测逻辑 ----------------
 if submit_button:
     if not smiles:
-        st.error("Please enter a valid SMILES string.")
+        st.error("请输入有效的 SMILES 字符串。")
     else:
-        with st.spinner("Processing molecule and predicting heat capacity..."):
+        with st.spinner("正在处理分子并预测热容，请稍候..."):
             try:
                 mol = Chem.MolFromSmiles(smiles)
                 if not mol:
-                    st.error("Invalid SMILES format.")
+                    st.error("SMILES 格式无效，请检查输入。")
                     st.stop()
 
-                # 显示分子结构
+                # 绘制分子结构
                 mol = Chem.AddHs(mol)
                 AllChem.Compute2DCoords(mol)
                 svg = mol_to_image(mol)
@@ -133,16 +140,30 @@ if submit_button:
 
                 # 分子量
                 mol_weight = Descriptors.MolWt(mol)
-                st.markdown(f"**Molecular Weight:** {mol_weight:.2f} g/mol")
+                st.markdown(f"**分子量：** {mol_weight:.2f} g/mol")
 
                 # 计算描述符
                 smiles_list = [smiles]
                 rdkit_features = calc_rdkit_descriptors(smiles_list)
                 mordred_features = calc_mordred_descriptors(smiles_list)
 
+                # 🔹 数据清洗，防止列表/对象型数据
+                rdkit_features = clean_descriptor_dataframe(rdkit_features)
+                mordred_features = clean_descriptor_dataframe(mordred_features)
+
+                # 合并特征
                 merged_features = merge_features_without_duplicates(rdkit_features, mordred_features)
+
+                # 检查是否有序列型列（调试提示）
+                for col in merged_features.columns:
+                    types = merged_features[col].apply(lambda x: type(x)).unique()
+                    if any(t in [list, tuple, np.ndarray] for t in types):
+                        st.warning(f"⚠️ 特征列 {col} 含有序列数据，已自动清洗。")
+
+                # 提取模型所需特征
                 data = merged_features.loc[:, required_descriptors]
 
+                # 构建预测输入
                 predict_df = pd.DataFrame({
                     'ATS0se': [data.iloc[0]['ATS0se']], 
                     'EState_VSA5': [data.iloc[0]['EState_VSA5']], 
@@ -152,10 +173,13 @@ if submit_button:
                 # 加载模型并预测
                 predictor = load_predictor()
                 prediction = predictor.predict(predict_df)
-                st.success(f"Predicted Heat Capacity (Cp): {prediction.values[0]:.2f} J/(mol·K)")
 
+                # 显示预测结果
+                st.success(f"预测热容 Cp：{prediction.values[0]:.2f} J/(mol·K)")
+
+                # 释放内存
                 del predictor
                 gc.collect()
 
             except Exception as e:
-                st.error(f"Error: {str(e)}")
+                st.error(f"出现错误：{str(e)}")
