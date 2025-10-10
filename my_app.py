@@ -100,4 +100,80 @@ def clean_descriptor_dataframe(df):
 
 def build_model_input(merged_features_df, predictor):
     """
-    根据 predictor 的
+    根据 predictor 的期望特征构造 final_input DataFrame。
+    缺失特征用 0.0 填充，保证列顺序与训练时一致。
+    """
+    # 尽量通过 feature_metadata 获取特征名
+    try:
+        model_features = predictor.feature_metadata.get_features()
+    except Exception:
+        # fallback: 使用训练时保存的列（若可访问）
+        try:
+            model_features = predictor._learner.feature_metadata.get_features()
+        except Exception:
+            model_features = None
+
+    if model_features is None or len(model_features) == 0:
+        # 最后退回到 merged_features 的所有列（但这不理想）
+        model_features = list(merged_features_df.columns)
+
+    # 创建一个全零 dataframe（1 行）
+    final_df = pd.DataFrame(0.0, index=[0], columns=model_features)
+
+    # 将 merged_features 的已有列拷贝到 final_df（如果列名匹配）
+    for col in merged_features_df.columns:
+        if col in final_df.columns:
+            try:
+                val = merged_features_df.iloc[0][col]
+                # 若是序列，取第一个标量
+                if isinstance(val, (list, tuple, np.ndarray, pd.Series)):
+                    val = val[0] if len(val) > 0 else np.nan
+                final_df.at[0, col] = float(val) if pd.notna(val) else 0.0
+            except Exception:
+                # 如果转换失败，设置为 0.0
+                final_df.at[0, col] = 0.0
+
+    # 确保所有列为 float 类型
+    final_df = final_df.astype(float)
+    return final_df
+
+# ========== 主流程 ==========
+if submit:
+    if not smiles:
+        st.error("Please enter a SMILES string.")
+    else:
+        try:
+            mol = Chem.MolFromSmiles(smiles)
+            if mol is None:
+                st.error("Invalid SMILES. Please check the input.")
+            else:
+                # 显示分子图与分子量
+                mol = Chem.AddHs(mol)
+                AllChem.Compute2DCoords(mol)
+                st.markdown(mol_to_image(mol), unsafe_allow_html=True)
+                st.write(f"Molecular Weight: {Descriptors.MolWt(mol):.2f} g/mol")
+
+                # 计算描述符并清洗
+                smiles_list = [smiles]
+                rdkit_df = clean_descriptor_dataframe(calc_rdkit_descriptors(smiles_list))
+                mordred_df = clean_descriptor_dataframe(calc_mordred_descriptors(smiles_list))
+                merged = pd.concat([rdkit_df, mordred_df], axis=1)
+                merged = merged.loc[:, ~merged.columns.duplicated()]
+                merged = clean_descriptor_dataframe(merged)
+
+                # 加载模型
+                predictor = load_predictor()
+
+                # 构建与模型期望匹配的输入向量（严格列对齐）
+                final_input = build_model_input(merged, predictor)
+
+                # 预测
+                pred = predictor.predict(final_input)
+                st.success(f"Predicted Heat Capacity (Cp): {pred.values[0]:.2f} J/(mol·K)")
+
+                # 清理
+                del predictor
+                gc.collect()
+
+        except Exception as e:
+            st.error(f"Error during prediction: {e}")
