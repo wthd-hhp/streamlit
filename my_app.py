@@ -9,246 +9,95 @@ from autogluon.tabular import TabularPredictor
 import numpy as np
 import gc
 import re
-import traceback
 
-# ---------------- 页面样式 ----------------
+# ========== 页面样式 ==========
+st.set_page_config(layout="centered")
 st.markdown(
     """
     <style>
-    .stApp {
-        border: 2px solid #808080;
-        border-radius: 20px;
-        margin: 50px auto;
-        max-width: 40%;
-        background-color: #f9f9f9f9;
-        padding: 20px;
-        box-sizing: border-box;
-    }
-    .rounded-container h2 {
-        margin-top: -80px;
-        text-align: center;
-        background-color: #e0e0e0e0;
-        padding: 10px;
-        border-radius: 10px;
-    }
-    .rounded-container blockquote {
-        text-align: left;
-        margin: 20px auto;
-        background-color: #f0f0f0;
-        padding: 10px;
-        font-size: 1.1em;
-        border-radius: 10px;
-    }
+    .stApp { border: 2px solid #808080; border-radius: 20px; margin: 30px auto; max-width: 720px;
+            background-color: #f9f9f9; padding: 20px; box-sizing: border-box; }
+    .rounded-container h2 { text-align: center; background-color: #eaeaea; padding: 10px; border-radius: 8px; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-# ---------------- 页面标题 ----------------
 st.markdown(
     """
     <div class='rounded-container'>
-        <h2>Predict Heat Capacity (Cp) of Organic Molecules</h2>
-        <blockquote>
-            1. This web app predicts the heat capacity (Cp) of organic molecules based on their SMILES structure using a trained machine learning model.<br>
-            2. Enter a valid SMILES string below to get the predicted result.
-        </blockquote>
+        <h2>Predict Heat Capacity (Cp)</h2>
+        <p>Enter a SMILES string; the app computes descriptors and predicts heat capacity using a trained AutoGluon model.</p>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-# ---------------- 用户输入 ----------------
-smiles = st.text_input(
-    "Enter the SMILES representation of the molecule:",
-    placeholder="e.g., C1=CC=CC=C1O",
-)
+# ========== 用户输入 ==========
+smiles = st.text_input("SMILES:", placeholder="e.g., C1=CC=CC=C1O")
+submit = st.button("Predict Cp")
 
-submit_button = st.button("Submit and Predict")
+# ========== 需要的本地/显式特征名（若你知道，可放在这里备份） ==========
+# required_descriptors = ["ATS0se", "EState_VSA5", "ATSC0dv"]
+#（此版本将以模型的 feature list 为准，不直接依赖 required_descriptors）
 
-# 模型特征（与你的 AutoGluon 模型保持一致）
-required_descriptors = ["ATS0se", "EState_VSA5", "ATSC0dv"]
-
-# ---------------- 模型加载 ----------------
-@st.cache_resource(show_spinner=False, max_entries=1)
+# ========== 模型加载 ==========
+@st.cache_resource(show_spinner=False)
 def load_predictor():
-    """加载训练好的 AutoGluon 热容预测模型"""
-    return TabularPredictor.load("./autogluon")  # ← 改成你的模型路径
+    # 修改为你的模型路径（模型文件夹, 如 ./autogluon 或 ./ag-heatcapacity-gas 等）
+    return TabularPredictor.load("./autogluon")
 
-# ---------------- 分子绘图 ----------------
+# ========== 工具函数 ==========
 def mol_to_image(mol, size=(300, 300)):
     d2d = MolDraw2DSVG(size[0], size[1])
     d2d.DrawMolecule(mol)
     d2d.FinishDrawing()
     svg = d2d.GetDrawingText()
-    svg = re.sub(r"<rect[^>]*>", "", svg, flags=re.DOTALL)
+    svg = re.sub(r'<rect[^>]*>', '', svg, flags=re.DOTALL)
     return svg
 
-# ---------------- 清洗描述符函数 ----------------
-def clean_descriptor_dataframe(df):
-    """确保所有描述符为单值浮点数"""
-    cleaned = df.copy()
-    for col in cleaned.columns:
-        cleaned[col] = cleaned[col].apply(
-            lambda x: x[0]
-            if isinstance(x, (list, tuple, np.ndarray, pd.Series)) and len(x) > 0
-            else x
-        )
-    cleaned = cleaned.apply(pd.to_numeric, errors="coerce")
-    return cleaned
-
-# ---------------- RDKit 描述符 ----------------
 def calc_rdkit_descriptors(smiles_list):
     desc_names = [name for name, _ in Descriptors._descList]
     calc = MoleculeDescriptors.MolecularDescriptorCalculator(desc_names)
-    results = []
+    rows = []
     for smi in smiles_list:
         mol = Chem.MolFromSmiles(smi)
         mol = Chem.AddHs(mol)
-        desc = calc.CalcDescriptors(mol)
-        results.append(desc)
-    return pd.DataFrame(results, columns=desc_names)
+        vals = calc.CalcDescriptors(mol)
+        rows.append(vals)
+    return pd.DataFrame(rows, columns=desc_names)
 
-# ---------------- Mordred 描述符 ----------------
 def calc_mordred_descriptors(smiles_list):
     calc = Calculator(descriptors, ignore_3D=True)
-    results = []
+    rows = []
     for smi in smiles_list:
         mol = Chem.MolFromSmiles(smi)
         mol = Chem.AddHs(mol)
         res = calc(mol)
-        desc_dict = {}
-        for key, val in res.asdict().items():
-            if isinstance(val, (list, tuple, np.ndarray, pd.Series)):
-                desc_dict[key] = val[0] if len(val) > 0 else np.nan
-            elif val is None or isinstance(val, complex):
-                desc_dict[key] = np.nan
-            elif hasattr(val, "__class__") and val.__class__.__name__ == "Missing":
-                desc_dict[key] = np.nan
+        d = {}
+        for k, v in res.asdict().items():
+            if isinstance(v, (list, tuple, np.ndarray, pd.Series)):
+                d[k] = v[0] if len(v) > 0 else np.nan
+            elif v is None or isinstance(v, complex):
+                d[k] = np.nan
+            elif hasattr(v, "__class__") and v.__class__.__name__ == "Missing":
+                d[k] = np.nan
             else:
-                desc_dict[key] = val
-        results.append(desc_dict)
-    return pd.DataFrame(results)
+                d[k] = v
+        rows.append(d)
+    return pd.DataFrame(rows)
 
-# ---------------- 特征合并 ----------------
-def merge_features_without_duplicates(original_df, *feature_dfs):
-    merged = pd.concat([original_df] + list(feature_dfs), axis=1)
-    merged = merged.loc[:, ~merged.columns.duplicated()]
-    return merged
+def clean_descriptor_dataframe(df):
+    if df is None or df.shape[0] == 0:
+        return pd.DataFrame()
+    cleaned = df.copy()
+    for col in cleaned.columns:
+        cleaned[col] = cleaned[col].apply(
+            lambda x: x[0] if isinstance(x, (list, tuple, np.ndarray, pd.Series)) and len(x) > 0 else x
+        )
+    cleaned = cleaned.apply(pd.to_numeric, errors="coerce")
+    return cleaned
 
-# ---------------- 主预测逻辑 ----------------
-if submit_button:
-    if not smiles:
-        st.error("Please enter a valid SMILES string.")
-    else:
-        with st.spinner("Processing molecule and predicting heat capacity..."):
-            try:
-                mol = Chem.MolFromSmiles(smiles)
-                if not mol:
-                    st.error("Invalid SMILES format.")
-                    st.stop()
-
-                # 绘制分子结构
-                mol = Chem.AddHs(mol)
-                AllChem.Compute2DCoords(mol)
-                svg = mol_to_image(mol)
-                st.markdown(
-                    f'<div style="text-align:center;">{svg}</div>', unsafe_allow_html=True
-                )
-
-                # 分子量
-                mol_weight = Descriptors.MolWt(mol)
-                st.markdown(f"**Molecular Weight:** {mol_weight:.2f} g/mol")
-
-                # 计算并清洗描述符
-                smiles_list = [smiles]
-                rdkit_features = clean_descriptor_dataframe(
-                    calc_rdkit_descriptors(smiles_list)
-                )
-                mordred_features = clean_descriptor_dataframe(
-                    calc_mordred_descriptors(smiles_list)
-                )
-
-                merged_features = merge_features_without_duplicates(
-                    rdkit_features, mordred_features
-                )
-                merged_features = clean_descriptor_dataframe(merged_features)
-
-                st.write(f"🌿 特征矩阵形状: {merged_features.shape}")
-
-                # 提取模型所需特征
-                data = merged_features.loc[:, required_descriptors]
-
-                # ---------------- 调试与预测安全清洗 ----------------
-                st.write("🔍 Columns:", list(data.columns))
-                st.write("🔍 dtypes:")
-                st.write(data.dtypes)
-
-                first_row = data.iloc[0]
-                cell_info = {
-                    col: (type(first_row[col]).__name__, repr(first_row[col]))
-                    for col in data.columns
-                }
-                st.write("🔍 First row cell types and repr:")
-                st.json(cell_info)
-
-                def force_scalar_float(x):
-                    try:
-                        if isinstance(x, (list, tuple, np.ndarray, pd.Series)):
-                            if len(x) == 0:
-                                return np.nan
-                            val = x[0]
-                        else:
-                            val = x
-                        if isinstance(val, (np.generic,)):
-                            return float(val)
-                        if val is None:
-                            return np.nan
-                        return float(val)
-                    except Exception:
-                        return np.nan
-
-                data_clean = data.applymap(force_scalar_float)
-                st.write("🔍 data_clean dtypes:")
-                st.write(data_clean.dtypes)
-                st.write("🔍 data_clean values (first row):")
-                st.write(data_clean.iloc[0].to_dict())
-
-                # 测试能否转成 numpy 数组
-                try:
-                    arr = data_clean.to_numpy()
-                    st.write("🔍 numpy shape:", arr.shape)
-                    st.write("🔍 numpy dtype:", arr.dtype)
-                except Exception as e_arr:
-                    st.error(f"无法转换为 numpy 数组：{e_arr}")
-                    st.error(traceback.format_exc())
-
-                # 填充 NaN 并确保 dtype=float
-                final_input = data_clean.fillna(0.0).astype(float)
-                st.success("✅ 预测输入数据:")
-                st.dataframe(final_input)
-
-                # 加载模型并预测
-                try:
-                    predictor = load_predictor()
-                    pred = predictor.predict(final_input)
-                    st.success(
-                        f"Predicted Heat Capacity (Cp): {pred.values[0]:.2f} J/(mol·K)"
-                    )
-                    del predictor
-                    gc.collect()
-                except Exception as e:
-                    st.error("预测时报错（traceback如下）:")
-                    tb = traceback.format_exc()
-                    st.code(tb)
-                    st.write("🔍 final_input info:")
-                    st.write("columns:", list(final_input.columns))
-                    st.write("dtypes:")
-                    st.write(final_input.dtypes)
-                    st.write("values (repr first row):")
-                    st.write(
-                        {c: repr(final_input.iloc[0][c]) for c in final_input.columns}
-                    )
-
-            except Exception as e:
-                st.error(f"❌ 出现错误: {str(e)}")
+def build_model_input(merged_features_df, predictor):
+    """
+    根据 predictor 的
