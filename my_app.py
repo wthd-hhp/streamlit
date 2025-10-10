@@ -170,7 +170,7 @@ if submit_button:
                 st.success("✅ 预测输入数据:")
                 st.dataframe(data)
                 
-import traceback  # 放在文件开头也可，这里示例内重复导入无妨
+
 
 # --------- 在调用 predictor.predict 之前执行更严格的检查与清洗 ----------
 # merged_features 已经存在（你原来的合并结果）
