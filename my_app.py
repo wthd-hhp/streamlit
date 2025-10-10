@@ -169,6 +169,7 @@ if submit_button:
                 data = merged_features.loc[:, required_descriptors]
                 st.success("✅ 预测输入数据:")
                 st.dataframe(data)
+                
 import traceback  # 放在文件开头也可，这里示例内重复导入无妨
 
 # --------- 在调用 predictor.predict 之前执行更严格的检查与清洗 ----------
