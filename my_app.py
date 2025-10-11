@@ -150,9 +150,17 @@ mordred_features = calc_mordred_descriptors(smiles_list)
 merged_features = merge_features_without_duplicates(rdkit_features, mordred_features)
 
 # 2. 再切片
+# ---------- 预测 ----------
 data = merged_features.loc[:, required_descriptors]
-predict_df = data.iloc[:1]          # (1, 3) 全 float64
+final_input = data.iloc[:1]
 
+# 🔧 压平
+final_input = final_input.applymap(
+    lambda x: float(np.mean(x)) if isinstance(x, (list, np.ndarray, tuple)) else float(x)
+)
+
+pred = predictor.predict(final_input)
+st.success(f"Predicted Heat Capacity (Cp): {pred.values[0]:.2f} J/(mol·K)")
 # ---------------- 主预测逻辑 ----------------
 if submit_button:
     if not smiles:
