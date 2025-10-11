@@ -141,8 +141,17 @@ def merge_features_without_duplicates(original_df, *feature_dfs):
 
 # ---------------- 主预测逻辑里构造输入 ----------------
 # 原来 3 行换成 1 行，保证每列都是 float
+# ---------- 计算描述符 ----------
+smiles_list = [smiles]
+rdkit_features = calc_rdkit_descriptors(smiles_list)
+mordred_features = calc_mordred_descriptors(smiles_list)
+
+# 1. 先合并（内部已把 list/ndarray 压成标量）
+merged_features = merge_features_without_duplicates(rdkit_features, mordred_features)
+
+# 2. 再切片
 data = merged_features.loc[:, required_descriptors]
-predict_df = data.iloc[:1]          # 形状 (1, 3) 且全为 float64
+predict_df = data.iloc[:1]          # (1, 3) 全 float64
 
 # ---------------- 主预测逻辑 ----------------
 if submit_button:
