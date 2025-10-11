@@ -227,6 +227,7 @@ if submit_button:
                 final_input = data_clean.fillna(0.0).astype(float)
                 st.success("✅ 预测输入数据:")
                 st.dataframe(final_input)
+                print(merged_features[required_descriptors].applymap(type).head())
 
                 # 加载模型并预测
                 try:
