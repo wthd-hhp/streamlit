@@ -159,9 +159,9 @@ final_input = final_input.applymap(
     lambda x: float(np.mean(x)) if isinstance(x, (list, np.ndarray, tuple)) else float(x)
 )
 
-pred = predictor.predict(final_input)
-st.success(f"Predicted Heat Capacity (Cp): {pred.values[0]:.2f} J/(mol·K)")
-# ---------------- 主预测逻辑 ----------------
+
+
+
 # ---------------- 主预测逻辑 ----------------
 if submit_button:
     if not smiles:
