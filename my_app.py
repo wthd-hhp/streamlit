@@ -162,6 +162,7 @@ final_input = final_input.applymap(
 pred = predictor.predict(final_input)
 st.success(f"Predicted Heat Capacity (Cp): {pred.values[0]:.2f} J/(mol·K)")
 # ---------------- 主预测逻辑 ----------------
+# ---------------- 主预测逻辑 ----------------
 if submit_button:
     if not smiles:
         st.error("Please enter a valid SMILES string.")
@@ -173,49 +174,38 @@ if submit_button:
                     st.error("Invalid SMILES format.")
                     st.stop()
 
-                # 绘制分子结构
+                # 显示分子结构
                 mol = Chem.AddHs(mol)
                 AllChem.Compute2DCoords(mol)
                 svg = mol_to_image(mol)
-                st.markdown(
-                    f'<div style="text-align:center;">{svg}</div>', unsafe_allow_html=True
-                )
+                st.markdown(f'<div style="text-align:center;">{svg}</div>', unsafe_allow_html=True)
 
                 # 分子量
                 mol_weight = Descriptors.MolWt(mol)
                 st.markdown(f"**Molecular Weight:** {mol_weight:.2f} g/mol")
 
-                # 计算并清洗描述符
+                # 计算描述符
                 smiles_list = [smiles]
-                rdkit_features = clean_descriptor_dataframe(
-                    calc_rdkit_descriptors(smiles_list)
-                )
-                mordred_features = clean_descriptor_dataframe(
-                    calc_mordred_descriptors(smiles_list)
-                )
+                rdkit_features = calc_rdkit_descriptors(smiles_list)
+                mordred_features = calc_mordred_descriptors(smiles_list)
+                merged_features = merge_features_without_duplicates(rdkit_features, mordred_features)
 
-                merged_features = merge_features_without_duplicates(
-                    rdkit_features, mordred_features
-                )
-                merged_features = clean_descriptor_dataframe(merged_features)
-
-                st.write(f"🌿 特征矩阵形状: {merged_features.shape}")
-
-                # 提取模型所需特征
+                # 构造输入并压平
                 data = merged_features.loc[:, required_descriptors]
+                final_input = data.iloc[:1].applymap(
+                    lambda x: float(np.mean(x)) if isinstance(x, (list, np.ndarray, tuple)) else float(x)
+                )
 
-                # ---------------- 调试与预测安全清洗 ----------------
-                st.write("🔍 Columns:", list(data.columns))
-                st.write("🔍 dtypes:")
-                st.write(data.dtypes)
+                # 🔽 加载模型 + 预测 （放在同一个 try 块里）
+                predictor = load_predictor()
+                prediction = predictor.predict(final_input)
+                st.success(f"Predicted Heat Capacity (Cp): {prediction.values[0]:.2f} J/(mol·K)")
 
-                first_row = data.iloc[0]
-                cell_info = {
-                    col: (type(first_row[col]).__name__, repr(first_row[col]))
-                    for col in data.columns
-                }
-                st.write("🔍 First row cell types and repr:")
-                st.json(cell_info)
+                del predictor
+                gc.collect()
+
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
 
                 def force_scalar_float(x):
                     try:
