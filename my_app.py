@@ -131,10 +131,18 @@ def calc_mordred_descriptors(smiles_list):
     return pd.DataFrame(results)
 
 # ---------------- 特征合并 ----------------
+# ---------------- 特征合并 ----------------
 def merge_features_without_duplicates(original_df, *feature_dfs):
     merged = pd.concat([original_df] + list(feature_dfs), axis=1)
     merged = merged.loc[:, ~merged.columns.duplicated()]
+    # 新增：把 list/ndarray 压成标量
+    merged = merged.applymap(lambda x: float(np.mean(x)) if isinstance(x, (list, np.ndarray, tuple)) else float(x))
     return merged
+
+# ---------------- 主预测逻辑里构造输入 ----------------
+# 原来 3 行换成 1 行，保证每列都是 float
+data = merged_features.loc[:, required_descriptors]
+predict_df = data.iloc[:1]          # 形状 (1, 3) 且全为 float64
 
 # ---------------- 主预测逻辑 ----------------
 if submit_button:
