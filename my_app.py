@@ -232,7 +232,7 @@ if submit_button:
                     for model in essential_models:
                         try:
                             predictions = predictor.predict(predict_df_1, model=model)
-                            predictions_dict[model] = predictions.astype(int).apply(lambda x: f"{x} J/(mol·K")
+                            predictions_dict[model] = predictions.astype(int).apply(lambda x: f"{x} J/(mol·K)")
                         except Exception as model_error:
                             st.warning(f"Model {model} prediction failed: {str(model_error)}")
                             predictions_dict[model] = "Error"
