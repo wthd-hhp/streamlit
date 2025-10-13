@@ -220,12 +220,12 @@ if submit_button:
                     predictor = load_predictor()
                     
                     # 只使用最关键的模型进行预测，减少内存占用
-                    essential_models = ['CatBoost',
-                                         'LightGBM',
-                                         'LightGBMLarge',
-                                         'RandomForestMSE',
+                    essential_models = ['CatBoost_BAG_L1',
+                                         'LightGBM_BAG_L1',
+                                         'LightGBMLarge_BAG_L1',
+                                         'MultiModalPredictor_BAG_L1',
                                          'WeightedEnsemble_L2',
-                                         'XGBoost']
+                                         'XGBoost_BAG_L1']
                     predict_df_1 = pd.concat([predict_df,predict_df],axis=0)
                     predictions_dict = {}
                     
