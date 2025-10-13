@@ -232,14 +232,12 @@ if submit_button:
                     for model in essential_models:
                         try:
                             predictions = predictor.predict(predict_df_1, model=model)
-                            predictions_dict[model] = predictions.astype(int).apply(lambda x: f"{x} nm")
+                            predictions_dict[model] = predictions.astype(int).apply(lambda x: f"{x} J/(mol·K")
                         except Exception as model_error:
                             st.warning(f"Model {model} prediction failed: {str(model_error)}")
                             predictions_dict[model] = "Error"
                       # 显示预测结果
                     st.write("Prediction Results (Essential Models):")
-                    st.markdown(
-                        "**Note:** WeightedEnsemble_L2 is a meta-model combining predictions from other models.")
                     results_df = pd.DataFrame(predictions_dict)
                     st.dataframe(results_df.iloc[:1,:])
                     
