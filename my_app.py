@@ -191,80 +191,68 @@ if submit_button:
                 merged_features = merge_features_without_duplicates(rdkit_features, mordred_features)
 
                 # 构造输入并压平
-                data = merged_features.loc[:, required_descriptors]
-                final_input = data.iloc[:1].applymap(
-                    lambda x: float(np.mean(x)) if isinstance(x, (list, np.ndarray, tuple)) else float(x)
-                )
+                data = merged_features.loc[:, ['ATS0se', 'EState_VSA5', 'ATSC0dv']]
 
-                # 🔽 加载模型 + 预测 （放在同一个 try 块里）
-                predictor = load_predictor()
-                prediction = predictor.predict(final_input)
-                st.success(f"Predicted Heat Capacity (Cp): {prediction.values[0]:.2f} J/(mol·K)")
+                # 创建输入数据表 - 使用新的特征
+                input_data = {
+                    "SMILES": [smiles],
+                    'ATS0se': [data.iloc[0]['ATS0se']], 
+                    'EState_VSA5': [data.iloc[0]['EState_VSA5']], 
+                    'ATSC0dv': [data.iloc[0]['ATSC0dv']]
+                }
+            
+                input_df = pd.DataFrame(input_data)
+                
+                # 显示输入数据
+                st.write("Input Data:")
+                st.dataframe(input_df)
 
-                del predictor
-                gc.collect()
-
-            except Exception as e:
-                st.error(f"Error: {str(e)}")
-
-                def force_scalar_float(x):
-                    try:
-                        if isinstance(x, (list, tuple, np.ndarray, pd.Series)):
-                            if len(x) == 0:
-                                return np.nan
-                            val = x[0]
-                        else:
-                            val = x
-                        if isinstance(val, (np.generic,)):
-                            return float(val)
-                        if val is None:
-                            return np.nan
-                        return float(val)
-                    except Exception:
-                        return np.nan
-
-                data_clean = data.applymap(force_scalar_float)
-                st.write("🔍 data_clean dtypes:")
-                st.write(data_clean.dtypes)
-                st.write("🔍 data_clean values (first row):")
-                st.write(data_clean.iloc[0].to_dict())
-
-                # 测试能否转成 numpy 数组
-                try:
-                    arr = data_clean.to_numpy()
-                    st.write("🔍 numpy shape:", arr.shape)
-                    st.write("🔍 numpy dtype:", arr.dtype)
-                except Exception as e_arr:
-                    st.error(f"无法转换为 numpy 数组：{e_arr}")
-                    st.error(traceback.format_exc())
-
-                # 填充 NaN 并确保 dtype=float
-                final_input = data_clean.fillna(0.0).astype(float)
-                st.success("✅ 预测输入数据:")
-                st.dataframe(final_input)
-                print(merged_features[required_descriptors].applymap(type).head())
-
+                # 创建预测用数据框 - 使用新的特征
+                predict_df = pd.DataFrame({
+                    'ATS0se': [data.iloc[0]['ATS0se']], 
+                    'EState_VSA5': [data.iloc[0]['EState_VSA5']], 
+                    'ATSC0dv': [data.iloc[0]['ATSC0dv']]
+                })
+                
                 # 加载模型并预测
                 try:
+                    # 使用缓存的模型加载方式
                     predictor = load_predictor()
-                    pred = predictor.predict(final_input)
-                    st.success(
-                        f"Predicted Heat Capacity (Cp): {pred.values[0]:.2f} J/(mol·K)"
-                    )
+                    
+                    # 只使用最关键的模型进行预测，减少内存占用
+                    essential_models = ['CatBoost',
+                                         'LightGBM',
+                                         'LightGBMLarge',
+                                         'RandomForestMSE',
+                                         'WeightedEnsemble_L2',
+                                         'XGBoost']
+                    predict_df_1 = pd.concat([predict_df,predict_df],axis=0)
+                    predictions_dict = {}
+                    
+                    for model in essential_models:
+                        try:
+                            predictions = predictor.predict(predict_df_1, model=model)
+                            predictions_dict[model] = predictions.astype(int).apply(lambda x: f"{x} nm")
+                        except Exception as model_error:
+                            st.warning(f"Model {model} prediction failed: {str(model_error)}")
+                            predictions_dict[model] = "Error"
+                      # 显示预测结果
+                    st.write("Prediction Results (Essential Models):")
+                    st.markdown(
+                        "**Note:** WeightedEnsemble_L2 is a meta-model combining predictions from other models.")
+                    results_df = pd.DataFrame(predictions_dict)
+                    st.dataframe(results_df.iloc[:1,:])
+                    
+                    # 主动释放内存
                     del predictor
                     gc.collect()
+
                 except Exception as e:
-                    st.error("预测时报错（traceback如下）:")
-                    tb = traceback.format_exc()
-                    st.code(tb)
-                    st.write("🔍 final_input info:")
-                    st.write("columns:", list(final_input.columns))
-                    st.write("dtypes:")
-                    st.write(final_input.dtypes)
-                    st.write("values (repr first row):")
-                    st.write(
-                        {c: repr(final_input.iloc[0][c]) for c in final_input.columns}
-                    )
+                    st.error(f"Model loading failed: {str(e)}")
 
             except Exception as e:
-                st.error(f"❌ 出现错误: {str(e)}")
+                st.error(f"An error occurred: {str(e)}")
+
+            
+
+               
