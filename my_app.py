@@ -58,6 +58,35 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# ---------------- 模型路径与特征定义 ----------------
+MODEL_PATHS = {
+    "Gas": "./autogluon/gas/",
+    "Liquid": "./autogluon/liquid/",
+    "Solid": "./autogluon/solid/",
+}
+
+FEATURE_SETS = {
+    "Gas": ["ATS0s", "PEOE_VSA6", "SssCH2"],
+    "Liquid": ["ATS0s", "PEOE_VSA6", "SssCH2"],
+    "Solid": ["ATSC0dv", "ATS0s", "ATS0pe"],  # 替换为你的特征
+}
+
+
+ESSENTIAL_MODELS = [
+    "CatBoost_BAG_L1",
+    "LightGBM_BAG_L1",
+    "LightGBMLarge_BAG_L1",
+    "MultiModalPredictor_BAG_L1",
+    "XGBoost_BAG_L1",
+]
+
+
+# ---------------- 选择物态 ----------------
+state = st.selectbox(
+    "Select the physical state of the substance:",
+    ("Gas", "Liquid", "Solid"),
+)
+
 # ---------------- 用户输入 ----------------
 smiles = st.text_input(
     "Enter the SMILES representation of the molecule:",
@@ -66,14 +95,13 @@ smiles = st.text_input(
 
 submit_button = st.button("Submit and Predict")
 
-# 模型特征（与你的 AutoGluon 模型保持一致）
-required_descriptors = ["ATS0se", "EState_VSA5", "ATSC0dv"]
-
 # ---------------- 模型加载 ----------------
-@st.cache_resource(show_spinner=False, max_entries=1)
-def load_predictor():
-    """加载训练好的 AutoGluon 热容预测模型"""
-    return TabularPredictor.load("./autogluon")  # ← 改成你的模型路径
+@st.cache_resource(show_spinner=False)
+def load_predictor(model_path):
+    """根据物态加载 AutoGluon 模型"""
+    return TabularPredictor.load(model_path)
+
+
 
 # ---------------- 分子绘图 ----------------
 def mol_to_image(mol, size=(300, 300)):
@@ -160,8 +188,6 @@ final_input = final_input.applymap(
 )
 
 
-
-
 # ---------------- 主预测逻辑 ----------------
 if submit_button:
     if not smiles:
@@ -190,67 +216,52 @@ if submit_button:
                 mordred_features = calc_mordred_descriptors(smiles_list)
                 merged_features = merge_features_without_duplicates(rdkit_features, mordred_features)
 
-                # 构造输入并压平
-                data = merged_features.loc[:, ['ATS0se', 'EState_VSA5', 'ATSC0dv']]
+               
+                # 获取该状态下的特征
+                feature_names = FEATURE_SETS[state]
+                missing_features = [f for f in feature_names if f not in merged_features.columns]
+                if missing_features:
+                    st.error(f"Missing features for {state} model: {missing_features}")
+                    st.stop()
 
-                # 创建输入数据表 - 使用新的特征
-                input_data = {
-                    "SMILES": [smiles],
-                    'ATS0se': [data.iloc[0]['ATS0se']], 
-                    'EState_VSA5': [data.iloc[0]['EState_VSA5']], 
-                    'ATSC0dv': [data.iloc[0]['ATSC0dv']]
-                }
-            
+                # --- 创建输入数据表（含 SMILES）---
+                input_data = {"SMILES": [smiles]}
+                for f in feature_names:
+                    input_data[f] = [merged_features.iloc[0][f]]
                 input_df = pd.DataFrame(input_data)
-                
-                # 显示输入数据
-                st.write("Input Data:")
+
+                st.write(f"Input Features for {state} model:")
                 st.dataframe(input_df)
 
-                # 创建预测用数据框 - 使用新的特征
-                predict_df = pd.DataFrame({
-                    'ATS0se': [data.iloc[0]['ATS0se']], 
-                    'EState_VSA5': [data.iloc[0]['EState_VSA5']], 
-                    'ATSC0dv': [data.iloc[0]['ATSC0dv']]
-                })
-                
-                # 加载模型并预测
-                try:
-                    # 使用缓存的模型加载方式
-                    predictor = load_predictor()
-                    
-                    # 只使用最关键的模型进行预测，减少内存占用
-                    essential_models = ['CatBoost_BAG_L1',
-                                         'LightGBM_BAG_L1',
-                                         'LightGBMLarge_BAG_L1',
-                                         'MultiModalPredictor_BAG_L1',
-                                         'WeightedEnsemble_L2',
-                                         'XGBoost_BAG_L1']
-                    predict_df_1 = pd.concat([predict_df,predict_df],axis=0)
-                    predictions_dict = {}
-                    
-                    for model in essential_models:
-                        try:
-                            predictions = predictor.predict(predict_df_1, model=model)
-                            predictions_dict[model] = predictions.astype(int).apply(lambda x: f"{x} J/(mol·K)")
-                        except Exception as model_error:
-                            st.warning(f"Model {model} prediction failed: {str(model_error)}")
-                            predictions_dict[model] = "Error"
-                      # 显示预测结果
-                    st.write("Prediction Results (Essential Models):")
-                    results_df = pd.DataFrame(predictions_dict)
-                    st.dataframe(results_df.iloc[:1,:])
-                    
-                    # 主动释放内存
-                    del predictor
-                    gc.collect()
+                # --- 仅取特征列进行预测 ---
+                predict_df = merged_features.loc[:, feature_names]
 
-                except Exception as e:
-                    st.error(f"Model loading failed: {str(e)}")
+                # 加载模型
+                model_path = MODEL_PATHS[state]
+                predictor = load_predictor(model_path)
+
+                # --- 多模型预测 ---
+                predictions_dict = {}
+                for model in ESSENTIAL_MODELS:
+                    try:
+                        pred = predictor.predict(predict_df, model=model)
+                        predictions_dict[model] = pred.astype(float).apply(lambda x: f"{x:.2f} J/(mol·K)")
+                    except Exception as model_error:
+                        st.warning(f"Model {model} prediction failed: {str(model_error)}")
+                        predictions_dict[model] = "Error"
+
+                # --- 展示结果 ---
+                st.write(f"Prediction Results ({state} Models):")
+                results_df = pd.DataFrame(predictions_dict)
+                st.dataframe(results_df)
+
+                # 主动释放内存
+                del predictor
+                gc.collect()
 
             except Exception as e:
                 st.error(f"An error occurred: {str(e)}")
 
-            
+
 
                
