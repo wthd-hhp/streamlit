@@ -230,23 +230,23 @@ if submit_button:
                         st.warning(f"Model {model} prediction failed: {str(model_error)}")
                         predictions_dict[model] = "Error"
 
-               # --- 展示结果 ---
-               st.write(f"### Prediction Results ({state} Models):")
+                # --- 展示结果 ---
+                st.write(f"### Prediction Results ({state} Models):")
 
-              # 将每个模型的预测结果转为 DataFrame
-              results_df = pd.DataFrame(predictions_dict)
+                # 将每个模型的预测结果转为 DataFrame
+                results_df = pd.DataFrame(predictions_dict)
 
-              # 如果预测值是数值型，则转为带单位字符串
-              for col in results_df.columns:
-                  if isinstance(results_df[col].iloc[0], (int, float, np.floating)):
-                     results_df[col] = results_df[col].apply(lambda x: f"{x:.2f} J/(mol·K)")
-              # 加入 SMILES 和分子量两列（单位写在数字后）
-              results_df.insert(0, "SMILES", smiles)
-              results_df.insert(1, "Molecular Weight", f"{mol_weight:.2f} g/mol")
-            
-              # 展示表格
-              st.dataframe(results_df, use_container_width=True)
+                # 如果预测值是数值型，则转为带单位字符串
+                for col in results_df.columns:
+                    if isinstance(results_df[col].iloc[0], (int, float, np.floating)):
+                        results_df[col] = results_df[col].apply(lambda x: f"{x:.2f} J/(mol·K)")
 
+                # 加入 SMILES 和分子量两列（单位写在数字后）
+                results_df.insert(0, "SMILES", smiles)
+                results_df.insert(1, "Molecular Weight", f"{mol_weight:.2f} g/mol")
+
+                # 展示表格
+                st.dataframe(results_df, use_container_width=True)
            
 
                 # 主动释放内存
