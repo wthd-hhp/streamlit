@@ -189,7 +189,7 @@ if submit_button:
 
                 # 分子量
                 mol_weight = Descriptors.MolWt(mol)
-                st.markdown(f"**Molecular Weight:** {mol_weight:.2f} g/mol")
+                
 
                 # 计算描述符
                 smiles_list = [smiles]
