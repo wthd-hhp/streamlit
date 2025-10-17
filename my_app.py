@@ -50,7 +50,7 @@ st.markdown(
     <div class='rounded-container'>
         <h2 style="font-size:24px;">Predict Heat Capacity (Cp) of Organic Molecules</h2>
         <blockquote>
-            1. This web app predicts the heat capacity (Cp) of organic molecules based on their SMILES structure using a trained machine learning model.<br>
+            1. This web app predicts the heat capacity (Cp) of organic molecules based on their SMILES structure using trained machine learning model.<br>
             2. Enter a valid SMILES string below to get the predicted result.
         </blockquote>
     </div>
@@ -234,7 +234,7 @@ if submit_button:
                 st.write(f"### Prediction Results ({state} Models):")
 
                 # 将每个模型的预测结果转为 DataFrame
-                results_df = pd.DataFrame(predictions_dict)
+                results_df = pd.DataFrame(predictions_dict).reset_index(drop=True)
 
                 # 如果预测值是数值型，则转为带单位字符串
                 for col in results_df.columns:
